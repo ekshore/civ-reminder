@@ -5,11 +5,15 @@ use std::{
 };
 
 fn main() {
-    let addr = net::Ipv4Addr::new(127, 0, 0, 1);
-    let port = 7878;
-    let socket_addr = net::SocketAddrV4::new(addr, port);
+    let addrs = [
+        net::SocketAddr::from(([127, 0, 0, 1], 80)),
+        net::SocketAddr::from(([127, 0, 0, 1], 443)),
+        net::SocketAddr::from(([127, 0, 0, 1], 7878)),
+    ];
 
-    let listener = TcpListener::bind(socket_addr).unwrap();
+    let listener = TcpListener::bind(&addrs[..]).unwrap();
+
+    println!("Server Started, Listening on: {:#?}", listener.local_addr().unwrap());
 
     for conn in listener.incoming() {
         let mut conn = conn.unwrap();
@@ -36,9 +40,9 @@ fn handle_request(req: &mut net::TcpStream) {
     let content_length = convert_ascii_to_num(content_length);
 
     println!("Request: {:?}", &request);
-    
+
     let mut body: Vec<u8> = vec![0; content_length];
-     
+
     buf_reader.read_exact(body.as_mut_slice()).unwrap();
     let body_text = String::from_utf8(body).unwrap();
     println!("Request Body: {:#?}", body_text);
@@ -53,5 +57,5 @@ fn convert_ascii_to_num(val: &[u8]) -> usize {
         let place = ten.pow(place as u32);
         num += place * (val[i] - 48) as usize;
     }
-   num
+    num
 }
