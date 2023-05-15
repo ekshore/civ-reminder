@@ -17,11 +17,16 @@ fn main() {
 
     for conn in listener.incoming() {
         let mut conn = conn.unwrap();
-        handle_request(&mut conn);
+        let response = handle_request(&mut conn);
+        let response = *response.body();
+        let length = response.len();
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\n\r\n{response}");
+        conn.write_all(response.as_bytes()).unwrap();
     }
 }
 
-fn handle_request(req: &mut net::TcpStream) {
+fn handle_request(req: &mut net::TcpStream) -> http::Response<&str> {
+    println!("**** New Request Incoming! ****");
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut request = httparse::Request::new(&mut headers);
     let mut buf_reader = std::io::BufReader::new(req);
@@ -47,8 +52,13 @@ fn handle_request(req: &mut net::TcpStream) {
         let body_text = String::from_utf8(body).unwrap();
         println!("Request Body: {:#?}", body_text);
     };
+    
+    println!("**** Request Logged Returning! ****");
 
-    ()
+    http::Response::builder()
+        .status(http::StatusCode::OK)
+        .body("Request Logged")
+        .unwrap()
 }
 
 fn convert_ascii_to_num(val: &[u8]) -> usize {
@@ -65,12 +75,11 @@ fn convert_ascii_to_num(val: &[u8]) -> usize {
 fn get_content_length(request: httparse::Request) -> Option<usize> {
     let mut content_length_header: Option<httparse::Header> = None;
     for i in 0..request.headers.len(){
-        if request.headers.get(i).unwrap().name == "content-length" {
+        if "Content-Length".eq_ignore_ascii_case(request.headers.get(i).unwrap().name) {
             content_length_header = Some(request.headers[i]);
             break;
         }
     }
-
     if let Some(content_length_header) = content_length_header {
         let content_length = convert_ascii_to_num(content_length_header.value);
         return Some(content_length)
