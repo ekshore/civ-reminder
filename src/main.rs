@@ -36,16 +36,18 @@ fn handle_request(req: &mut net::TcpStream) {
     }
     request.parse(buff.as_slice()).unwrap();
 
-    let content_length = request.headers.last().unwrap().value;
-    let content_length = convert_ascii_to_num(content_length);
+    // let content_length = request.headers.last().unwrap().value;
+    // let content_length = convert_ascii_to_num(content_length);
 
     println!("Request: {:?}", &request);
 
-    let mut body: Vec<u8> = vec![0; content_length];
+    if let Some(content_length) = get_content_length(request) {
+        let mut body: Vec<u8> = vec![0; content_length];
+        buf_reader.read_exact(body.as_mut_slice()).unwrap();
+        let body_text = String::from_utf8(body).unwrap();
+        println!("Request Body: {:#?}", body_text);
+    };
 
-    buf_reader.read_exact(body.as_mut_slice()).unwrap();
-    let body_text = String::from_utf8(body).unwrap();
-    println!("Request Body: {:#?}", body_text);
     ()
 }
 
@@ -58,4 +60,20 @@ fn convert_ascii_to_num(val: &[u8]) -> usize {
         num += place * (val[i] - 48) as usize;
     }
     num
+}
+
+fn get_content_length(request: httparse::Request) -> Option<usize> {
+    let mut content_length_header: Option<httparse::Header> = None;
+    for i in 0..request.headers.len(){
+        if request.headers.get(i).unwrap().name == "content-length" {
+            content_length_header = Some(request.headers[i]);
+            break;
+        }
+    }
+
+    if let Some(content_length_header) = content_length_header {
+        let content_length = convert_ascii_to_num(content_length_header.value);
+        return Some(content_length)
+    }
+    None
 }
