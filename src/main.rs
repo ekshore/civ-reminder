@@ -4,6 +4,8 @@ use std::{
     net::{self, TcpListener},
 };
 
+mod webhook;
+
 fn main() {
     let addrs = [
         net::SocketAddr::from(([127, 0, 0, 1], 80)),
@@ -17,10 +19,12 @@ fn main() {
 
     for conn in listener.incoming() {
         let mut conn = conn.unwrap();
-        let response = handle_request(&mut conn);
-        let response = *response.body();
-        let length = response.len();
-        let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\n\r\n{response}");
+        // let response = handle_request(&mut conn);
+        // let response = *response.body();
+        // let length = response.len();
+        webhook::handle_tcp_connection(&mut conn);
+        let response = "Response Logged";
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len());
         conn.write_all(response.as_bytes()).unwrap();
     }
 }
@@ -40,9 +44,6 @@ fn handle_request(req: &mut net::TcpStream) -> http::Response<&str> {
         }
     }
     request.parse(buff.as_slice()).unwrap();
-
-    // let content_length = request.headers.last().unwrap().value;
-    // let content_length = convert_ascii_to_num(content_length);
 
     println!("Request: {:?}", &request);
 
