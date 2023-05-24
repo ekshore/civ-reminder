@@ -1,26 +1,48 @@
 use http;
 use httparse;
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::{io::prelude::*, net};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CivEvent {
+    game: String,
+    player: String,
+    turn: String,
+}
+
+impl CivEvent {
+    fn from_json(mut event: serde_json::Value) -> CivEvent {
+        let game = String::from(event["value1"].take().as_str().unwrap());
+        let player = String::from(event["value2"].take().as_str().unwrap());
+        let turn = String::from(event["value3"].take().as_str().unwrap());
+
+        CivEvent { game, player, turn }
+    }
+}
 
 pub fn handle_tcp_connection(conn: &mut net::TcpStream) {
     let request = parse_request(conn);
-    let (parts, body) = request.into_parts();
+    let (_parts, body) = request.into_parts();
 
-    let mut body_text: Option<String> = None;
-    if let Some(content_type) = parts.headers.get("Content-Type") {
-        if content_type.eq("application/json") {
-            body_text = Some(
-                String::from_utf8(
-                    body.expect("Media type is Application/JSON what body was expected"),
-                )
-                .unwrap(),
-            );
-        }
+    if let Media::JSON(body) = body {
+        let event = CivEvent::from_json(body);
+        dbg!(event);
+        conn.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
+    } else {
+        conn.write_all(b"HTTP/1.1 400 BAD REQUEST\r\n\r\n").unwrap();
     }
-    dbg!(body_text);
 }
 
-fn parse_request(conn: &mut net::TcpStream) -> http::Request<Option<Vec<u8>>> {
+#[derive(Debug)]
+enum Media {
+    JSON(serde_json::Value),
+    Text(String),
+    Bytes(Vec<u8>),
+    None,
+}
+
+fn parse_request(conn: &mut net::TcpStream) -> http::Request<Media> {
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut request = httparse::Request::new(&mut headers);
     let mut buf = std::io::BufReader::new(conn);
@@ -34,11 +56,22 @@ fn parse_request(conn: &mut net::TcpStream) -> http::Request<Option<Vec<u8>>> {
     }
     request.parse(req_bytes.as_slice()).unwrap();
 
-    let mut body: Option<Vec<u8>> = None;
-    if let Some(content_len) = get_content_length(request.headers.to_vec().as_ref()) {
+    let body: Media;
+    if let (Some(content_len), Some(content_type)) =
+        get_content_info(request.headers.to_vec().as_ref())
+    {
         let mut body_bytes: Vec<u8> = vec![0; content_len];
         buf.read_exact(body_bytes.as_mut_slice()).unwrap();
-        body = Some(body_bytes);
+        body = match content_type {
+            b"application/json" => {
+                Media::JSON(serde_json::from_slice(body_bytes.as_slice().as_ref()).unwrap())
+            }
+            b"plain/text" => Media::Text(String::from_utf8(body_bytes).unwrap()),
+            b"bytes" => Media::Bytes(body_bytes),
+            _ => Media::None,
+        }
+    } else {
+        body = Media::None;
     }
 
     let mut request_builder = http::Request::builder()
@@ -48,27 +81,30 @@ fn parse_request(conn: &mut net::TcpStream) -> http::Request<Option<Vec<u8>>> {
     for header in request.headers {
         request_builder = request_builder.header(header.name, header.value);
     }
-
     request_builder.body(body).unwrap()
 }
 
-fn get_content_length(headers: &Vec<httparse::Header>) -> Option<usize> {
-    let mut content_length_header: Option<httparse::Header> = None;
-    for i in 0..headers.len() {
-        if "Content-Length".eq_ignore_ascii_case(headers.get(i).unwrap().name) {
-            content_length_header = Some(
-                *headers
-                    .get(i)
-                    .expect("This is a checked index, something is very wrong"),
-            );
+fn get_content_info<'a>(headers: &'a Vec<httparse::Header>) -> (Option<usize>, Option<&'a [u8]>) {
+    let mut content_length: Option<usize> = None;
+    let mut content_type: Option<&[u8]> = None;
+
+    for i in 0..headers.len() { 
+        if content_type != None && content_length != None {
             break;
         }
+        match headers.get(i).expect("Iterating over header index").name {
+            "Content-Length" => {
+                content_length = Some(convert_ascii_to_num(
+                    headers.get(i).expect("Value expected for Key").value,
+                ));
+            }
+            "Content-Type" => {
+                content_type = Some(headers.get(i).expect("Value expected for key").value);
+            }
+            _ => continue,
+        }
     }
-    if let Some(content_length_header) = content_length_header {
-        let content_length = convert_ascii_to_num(content_length_header.value);
-        return Some(content_length);
-    }
-    None
+    (content_length, content_type)
 }
 
 fn convert_ascii_to_num(val: &[u8]) -> usize {

@@ -23,12 +23,13 @@ fn main() {
         // let response = *response.body();
         // let length = response.len();
         webhook::handle_tcp_connection(&mut conn);
-        let response = "Response Logged";
-        let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len());
-        conn.write_all(response.as_bytes()).unwrap();
+        // let response = "Response Logged";
+        // let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len());
+        // conn.write_all(response.as_bytes()).unwrap();
     }
 }
 
+#[allow(dead_code)]
 fn handle_request(req: &mut net::TcpStream) -> http::Response<&str> {
     println!("**** New Request Incoming! ****");
     let mut headers = [httparse::EMPTY_HEADER; 64];
