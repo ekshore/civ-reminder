@@ -1,8 +1,154 @@
+use discord;
 use http;
 use httparse;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{io::prelude::*, net};
+
+struct Player {
+    pub game_name: String,
+    pub discord_user: discord::model::User,
+}
+
+#[allow(dead_code)]
+pub struct WebHook {
+    discord_client: discord::Discord,
+    discord_server: discord::model::ServerInfo,
+    discord_channel: discord::model::PublicChannel,
+    pending_player: Option<usize>,
+    players: Vec<Player>,
+}
+
+impl WebHook {
+    pub fn new() -> WebHook {
+        let discord_client = discord::Discord::from_bot_token(
+            "MTExMDc3MTY3OTE3NDU5MDQ2NA.GtsfJ2.bTvAyg99wmyA810CGvRaP1AwAiKHvV-ThNrHVo",
+        )
+        .expect("Is my token Incorrect?");
+        let servers = discord_client
+            .get_servers()
+            .expect("This Bot should be added to a server");
+        let discord_server = servers.get(0).take().unwrap().to_owned();
+
+        println!(
+            "Discord Client created Successfully, connected to the {} server",
+            discord_server.name
+        );
+
+        let discord_channels = discord_client
+            .get_server_channels(discord_server.id)
+            .expect("A server should have channels");
+        let civ_reminder_channel = discord_channels
+            .iter()
+            .filter(|channel| channel.id.to_string().eq("1093982612470636574"))
+            .next()
+            .unwrap()
+            .to_owned();
+
+        println!(
+            "Found {} channel for civ notifications",
+            civ_reminder_channel.name
+        );
+
+        let members = discord_client
+            .get_server_members(discord_server.id)
+            .expect("A server should have members");
+
+        let players = build_player_list(members.iter().map(|m| m.user.to_owned()).collect());
+
+        println!("Built Player list:");
+        for i in 0..players.len() {
+            println!(
+                " - Name: {}, Discord Id: {}",
+                players[i].game_name, players[i].discord_user.id
+            );
+        }
+
+        WebHook {
+            discord_client,
+            discord_server,
+            discord_channel: civ_reminder_channel,
+            players,
+            pending_player: None,
+        }
+    }
+
+    pub fn handle_tcp_connection(&mut self, conn: &mut net::TcpStream) {
+        let request = parse_request(conn);
+        let (_parts, body) = request.into_parts();
+
+        if let Media::JSON(body) = body {
+            let event = CivEvent::from_json(body);
+            self.handle_event(event);
+            conn.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
+        } else {
+            conn.write_all(b"HTTP/1.1 400 BAD REQUEST\r\n\r\n").unwrap();
+        }
+    }
+
+    fn handle_event(&mut self, event: CivEvent) {
+        dbg!(&event);
+        if let Some(idx) = self.pending_player {
+            if self.players[idx]
+                .game_name
+                .eq_ignore_ascii_case(event.player.as_str())
+            {
+                return ();
+            }
+        }
+
+        self.pending_player = {
+            let mut player: Option<usize> = None;
+            for i in 0..self.players.len() {
+                if event
+                    .player
+                    .as_str()
+                    .eq_ignore_ascii_case(self.players[i].game_name.as_str())
+                {
+                    player = Some(i);
+                    break;
+                }
+            }
+            player
+        };
+        self.send_reminder();
+    }
+
+    fn send_reminder(&self) {
+        if let Some(idx) = self.pending_player {
+            let reminder_message = format!(
+                "{} it is your turn in the civ game. People are waiting on you!",
+                self.players[idx].discord_user.mention()
+            );
+            self.discord_client
+                .send_message(
+                    self.discord_channel.id,
+                    reminder_message.as_str(),
+                    "",
+                    false,
+                )
+                .unwrap();
+        }
+    }
+}
+
+fn build_player_list(users: Vec<discord::model::User>) -> Vec<Player> {
+    let game_players: [&str; 5] = [
+        "Ekshore",
+        "BlazeGemSpark",
+        "J_Storm",
+        "Galloran92",
+        "Heavy\"Spike\"-782",
+    ];
+    users
+        .iter()
+        .filter(|user| game_players.contains(&user.name.as_str()))
+        .map(|user| Player {
+            game_name: user.name.clone(),
+            discord_user: user.to_owned(),
+        })
+        .collect()
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CivEvent {
@@ -18,19 +164,6 @@ impl CivEvent {
         let turn = String::from(event["value3"].take().as_str().unwrap());
 
         CivEvent { game, player, turn }
-    }
-}
-
-pub fn handle_tcp_connection(conn: &mut net::TcpStream) {
-    let request = parse_request(conn);
-    let (_parts, body) = request.into_parts();
-
-    if let Media::JSON(body) = body {
-        let event = CivEvent::from_json(body);
-        dbg!(event);
-        conn.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
-    } else {
-        conn.write_all(b"HTTP/1.1 400 BAD REQUEST\r\n\r\n").unwrap();
     }
 }
 
@@ -88,7 +221,7 @@ fn get_content_info<'a>(headers: &'a Vec<httparse::Header>) -> (Option<usize>, O
     let mut content_length: Option<usize> = None;
     let mut content_type: Option<&[u8]> = None;
 
-    for i in 0..headers.len() { 
+    for i in 0..headers.len() {
         if content_type != None && content_length != None {
             break;
         }

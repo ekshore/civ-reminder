@@ -10,6 +10,7 @@ fn main() {
     ];
 
     let listener = TcpListener::bind(&addrs[..]).unwrap();
+    let mut webhook = webhook::WebHook::new();
 
     println!(
         "Server Started, Listening on: {:#?}",
@@ -17,7 +18,8 @@ fn main() {
     );
 
     for conn in listener.incoming() {
-        let mut conn = conn.unwrap();
-        webhook::handle_tcp_connection(&mut conn);
+        if let Ok(mut conn) = conn {
+            webhook.handle_tcp_connection(&mut conn);
+        }
     }
 }
