@@ -4,7 +4,7 @@ use http;
 use httparse;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{io::prelude::*, net};
+use std::{collections::HashMap, io::prelude::*, net};
 
 struct Player {
     pub game_name: String,
@@ -133,19 +133,19 @@ impl WebHook {
 }
 
 fn build_player_list(users: Vec<discord::model::User>) -> Vec<Player> {
-    let game_players: [&str; 5] = [
-        "Ekshore",
-        "BlazeGemSpark",
-        "J_Storm",
-        "Galloran92",
-        "Heavy\"Spike\"-782",
-    ];
+    let game_players: HashMap<&str, String> = HashMap::from([
+        ("Ekshore", String::from("Ekshore")),
+        ("BlazeGemSpark", String::from("BlazeGemSpark")),
+        ("J_Storm", String::from("J_Strohm")),
+        ("Galloran92", String::from("GalloranTBK")),
+        ("Heavy\"Spike\"-782", String::from("Heavy119"))
+    ]);
     users
         .iter()
-        .filter(|user| game_players.contains(&user.name.as_str()))
-        .map(|user| Player {
-            game_name: user.name.clone(),
-            discord_user: user.to_owned(),
+        .filter(|usr| game_players.contains_key(&usr.name.as_str()))
+        .map(|usr| Player {
+            game_name: game_players.get(usr.name.as_str()).unwrap().to_owned(),
+            discord_user: usr.to_owned(),
         })
         .collect()
 }
