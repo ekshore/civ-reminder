@@ -1,4 +1,5 @@
 use discord;
+use std::env;
 use http;
 use httparse;
 use serde::{Deserialize, Serialize};
@@ -21,10 +22,9 @@ pub struct WebHook {
 
 impl WebHook {
     pub fn new() -> WebHook {
-        let discord_client = discord::Discord::from_bot_token(
-            "MTExMDc3MTY3OTE3NDU5MDQ2NA.GtsfJ2.bTvAyg99wmyA810CGvRaP1AwAiKHvV-ThNrHVo",
-        )
-        .expect("Is my token Incorrect?");
+        let bot_token = env::var("CIV_REMINDER_TOKEN").expect("Token needs to be stored under `CIV_REMINDER_TOKEN`");
+        let discord_client = discord::Discord::from_bot_token(bot_token.as_str())
+            .expect("Is my token Incorrect?");
         let servers = discord_client
             .get_servers()
             .expect("This Bot should be added to a server");
