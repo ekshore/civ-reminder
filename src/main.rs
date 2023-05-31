@@ -1,4 +1,9 @@
-use std::net::{self, TcpListener};
+extern crate chrono;
+use std::{
+    net::{self, TcpListener},
+    sync::{Arc, Mutex},
+};
+extern crate timer;
 
 mod webhook;
 
@@ -10,16 +15,24 @@ fn main() {
     ];
 
     let listener = TcpListener::bind(&addrs[..]).unwrap();
-    let mut webhook = webhook::WebHook::new();
+    let webhook = webhook::WebHook::new();
 
     println!(
         "Server Started, Listening on: {:#?}",
         listener.local_addr().unwrap()
     );
 
+    let webhook = Arc::new(Mutex::new(webhook));
+
+    let timer = timer::Timer::new();
+    let r_webhook = Arc::clone(&webhook);
+    let _schedule = timer.schedule_repeating(chrono::Duration::hours(12), move || {
+        r_webhook.lock().unwrap().send_reminder();
+    });
+
     for conn in listener.incoming() {
         if let Ok(mut conn) = conn {
-            webhook.handle_tcp_connection(&mut conn);
+            let _ = &webhook.lock().unwrap().handle_tcp_connection(&mut conn);
         }
     }
 }

@@ -114,8 +114,9 @@ impl WebHook {
         self.send_reminder();
     }
 
-    fn send_reminder(&self) {
+    pub fn send_reminder(&self) {
         if let Some(idx) = self.pending_player {
+            println!("Sending turn reminder to {}", self.players[idx].game_name);
             let reminder_message = format!(
                 "{} it is your turn in the civ game. People are waiting on you!",
                 self.players[idx].discord_user.mention()
@@ -129,6 +130,7 @@ impl WebHook {
                 )
                 .unwrap();
         }
+        println!("Reminder processed");
     }
 }
 
