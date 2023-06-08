@@ -75,6 +75,7 @@ impl WebHook {
 
     pub fn handle_tcp_connection(&mut self, conn: &mut net::TcpStream) {
         let request = parse_request(conn);
+        dbg!(&request);
         let (_parts, body) = request.into_parts();
 
         if let Media::JSON(body) = body {
